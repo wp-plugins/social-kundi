@@ -38,3 +38,7 @@ Usually it is placed in the single-post.php file under or above the content() fu
 
 = 0.5 =
 * Initial version
+
+= 1.0 =
+* Added auto embed after content option
+* Thumbnail function check (prevents older themes throwing error when trying to get thumbnail of post)
