@@ -2,132 +2,194 @@
 /*
 Plugin Name: Social Kundi
 Plugin URI: http://blog.kundi.si
-Description: Add simple social sharing features for your blog, by enabling the plugin and adding the code social_kundi() andwhere in the code
+Description: Add simple social sharing features for your blog, by enabling the plugin and setting the embed option or adding the code social_kundi() in the template file/s
 Author: Aljaž Fajmut
-Version: 0.5
+Version: 1.0
 Author URI: http://kundi.si/
 */
 
 
-function clean_code($content) {
-  return preg_replace('/\s+/', ' ', strip_tags($content));
-}
+add_action('init', create_function('', 'new SocialKundi();'));
 
-function social_kundi_get_excerpt() {
-  global $post;
+
+class SocialKundi {
+  public static $options;
   
-  $excerpt = $post->post_excerpt ? $post->post_excerpt : $post->post_content;
-  $excerpt = clean_code($excerpt);
   
-  $max_length = 300;  //og max length
-  
-  //shorten
-  if (strlen($excerpt) > $max_length) {
+  public function __construct() {
+    //read settings
+    self::$options = $this->read_settings();
+    add_action('wp_head', array($this, 'og_headers'));
+    add_action('admin_menu', array($this, 'admin_actions'));
     
-    $excerpt = substr($excerpt, 0, $max_length - 3);
-    //cut it to the last space
-    $pos = strrpos($excerpt, ' ');
-    if ($pos) $excerpt = substr($excerpt, 0, $pos);
-    
-    $excerpt .= '...';
-  }
-  
-  return $excerpt;
-}
-
-function social_kundi_get_image() {
-  global $post;
-  
-  if ($image = wp_get_attachment_thumb_url( get_post_thumbnail_id( $post->ID ) ))
-    return $image;
-  
-  return get_first_image($post->post_content);
-}
-
-
-function get_first_image($html) {
-  $matches = array();
-  if (!preg_match('/<img[^>]*src=([\'"])(.*?)\\1/i', $html, $matches))
-      return FALSE;
-      
-  return $matches[2];
-}
-
-
-function social_kundi_og_headers() {  
-  global $post;
-  
-  $string = '';
-  $image = FALSE;
-  $permalink = get_permalink();
-  $fb_admins = get_option('fb_admins'); //"680101214";
-  $fb_appid = get_option('fb_appid');
-  
-  $tags = array(
-    'og:url' => $permalink
-  );
-  
-  if ($fb_admins)
-    $tags['fb:admins'] = $fb_admins;
-  
-  if ($fb_appid)
-    $tags['fb:app_id'] = $fb_appid;
-    
-  if (is_single()) {
-    $title = $post->post_title; //get_the_title($post->ID);
-    $description = social_kundi_get_excerpt();
-    $image = social_kundi_get_image();
-    
-    //$image = wp_get_attachment_thumb_url( get_post_thumbnail_id( $post->ID ) );
-      
-    $tags['og:title'] = $title;
-    $tags['og:description'] = $description;
-    $tags['og:type'] = 'article';
-      
-  } else {
-    $site_name = get_bloginfo('name');
-    $description = get_bloginfo('description');
-
-    $tags['og:url'] = get_bloginfo('url');
-    $tags['og:site_name'] = $site_name;
-    $tags['og:description'] = $description;
-    $tags['og:type'] = 'website';
-    
-  }
-  
-  //backup image (site image)
-  if (!$image) {
-    $logo_img = get_option('logo_img');
-
-    if (!empty($logo_img)) {
-      if ( (strlen($logo_img) > 7) && (substr($logo_img, 0, 7) == 'http://' ) ) {
-        $image = $logo_img;
-      }
-      else
-        $image = get_bloginfo('template_url') . $logo_img; //"/path/to-your/logo.jpg";
+    //var_dump(get_option('embed_social'));
+    if (get_option('embed_social')) {
+      add_filter('the_content', array($this, 'social_content'));
     }
   }
   
-  if ($image)
-    $tags['og:image'] = $image;
+  
+  public function admin_actions() {
+  	add_options_page("Social Kundi", "Social Kundi", 'manage_options', 'social_kundi', "social_kundi_admin");
+  }
+  
+  public function social_content($content) {
+    return $content . social_kundi(FALSE);
+  }
+  
+  
+  
+  static function get_options() {
+    return self::$options;
+  }
+  
+  private function read_settings() {
+    $options = $this->get_defaults();
+    foreach($options as $key => $value) {
+      if ($option = get_option($key)) {
+        $options[$key] = $option;
+      }
+    }
+    return $options;
+  }
+  
+  private function get_defaults() {
+    return array(
+      'fb_admins' => '',
+      'fb_appid' => '',
+      'twitter_name' => '',
+      'logo_img' => '',
+      'fb_color' => 'light',
+      'embed_social' => FALSE
+    );
+  }
+  
+  
+  static function clean_code($content) {
+    return preg_replace('/\s+/', ' ', strip_tags($content));
+  }
+  
+  private function get_excerpt() {
+    global $post;
 
-    
-  //render tags
-  $tags_html = '';
-  foreach($tags as $name => $content) {
-    $tags_html .= <<<EOF
-<meta property="$name" content="$content" />
+    $excerpt = $post->post_excerpt ? $post->post_excerpt : $post->post_content;
+    $excerpt = self::clean_code($excerpt);
+
+    $max_length = 300;  //og max length
+
+    //shorten
+    if (strlen($excerpt) > $max_length) {
+
+      $excerpt = substr($excerpt, 0, $max_length - 3);
+      //cut it to the last space
+      $pos = strrpos($excerpt, ' ');
+      if ($pos) $excerpt = substr($excerpt, 0, $pos);
+
+      $excerpt .= '...';
+    }
+
+    return $excerpt;
+  }
+  
+  private function get_image() {
+    global $post;
+
+    if (  (function_exists('get_post_thumbnail_id')) && ( $image = wp_get_attachment_thumb_url( get_post_thumbnail_id( $post->ID ) ) )  )
+      return $image;
+
+    return self::get_first_image($post->post_content);
+  }
+  
+  static function get_first_image($html) {
+    $matches = array();
+    if (!preg_match('/<img[^>]*src=([\'"])(.*?)\\1/i', $html, $matches))
+        return FALSE;
+
+    return $matches[2];
+  }
+  
+  public function og_headers() {  
+    global $post;
+
+    $string = '';
+    $image = FALSE;
+    $permalink = get_permalink();
+    $fb_admins = get_option('fb_admins'); //"680101214";
+    $fb_appid = get_option('fb_appid');
+
+    $tags = array(
+      'og:url' => $permalink
+    );
+
+    if ($fb_admins)
+      $tags['fb:admins'] = $fb_admins;
+
+    if ($fb_appid)
+      $tags['fb:app_id'] = $fb_appid;
+
+    if (is_single()) {
+      $title = $post->post_title; //get_the_title($post->ID);
+      $description = $this->get_excerpt();
+      $image = $this->get_image();
+
+      //$image = wp_get_attachment_thumb_url( get_post_thumbnail_id( $post->ID ) );
+
+      $tags['og:title'] = $title;
+      $tags['og:description'] = $description;
+      $tags['og:type'] = 'article';
+
+    } else {
+      $site_name = get_bloginfo('name');
+      $description = get_bloginfo('description');
+
+      $tags['og:url'] = get_bloginfo('url');
+      $tags['og:site_name'] = $site_name;
+      $tags['og:description'] = $description;
+      $tags['og:type'] = 'website';
+
+    }
+
+    //backup image (site image)
+    if (!$image) {
+      $logo_img = get_option('logo_img');
+
+      if (!empty($logo_img)) {
+        if ( (strlen($logo_img) > 7) && (substr($logo_img, 0, 7) == 'http://' ) ) {
+          $image = $logo_img;
+        }
+        else
+          $image = get_bloginfo('template_url') . $logo_img; //"/path/to-your/logo.jpg";
+      }
+    }
+
+    if ($image)
+      $tags['og:image'] = $image;
+
+
+    //render tags
+    $tags_html = '';
+    foreach($tags as $name => $content) {
+$tags_html .= <<<EOF
+  <meta property="$name" content="$content" />
 
 EOF;
-  }
+    }
 
-  echo "\n" . $tags_html . "\n";  
+    echo "\n" . $tags_html . "\n";  
+  }
+  
+  
 }
 
-add_action('wp_head', 'social_kundi_og_headers');
 
-function social_kundi()
+
+
+
+
+
+function social_kundi($echo = TRUE)
 {
+  global $post;
   $permalink = urlencode(get_permalink($post->ID));
 
   $twitter_name = get_option('twitter_name');
@@ -163,8 +225,12 @@ function social_kundi()
 
 EOF;
 
-  echo $string;
+  if ($echo)  
+    echo $string;
+    
+  return $string;
 }
+
 
 
 /*
@@ -172,28 +238,25 @@ admin page
 */
 
 function social_kundi_admin() {  
-  $options = array(
-    'fb_admins' => '',
-    'fb_appid' => '',
-    'twitter_name' => '',
-    'logo_img' => '',
-    'fb_color' => 'light'
-  );
-  
-  
-  foreach($options as $key => $val) {
-    if ($option = get_option($key)) {
-      $options[$key] = $option;
+  $options = SocialKundi::get_options();
+
+  if (isset($_POST['update_settings']) && isset($_POST['form_token']) && ($_POST['form_token'] == 'social_kundi')) {
+    foreach($options as $key => $val) {
+
+      if (isset($_POST[$key])) {
+
+        $value = $_POST[$key];
+        $options[$key] = $value;        
+      }
+      else {
+        $options[$key] = FALSE;
+      }
+      
+      update_option($key, $options[$key]);
     }
     
-    if (isset($_POST[$key])) {
-      
-      $value = $_POST[$key];
-      $options[$key] = $value;
-      //echo "je set: $key = $value <br/>";
-      update_option($key, $value);
-    }
   }
+
   
 ?>
 <div class="wrap">
@@ -218,6 +281,8 @@ function social_kundi_admin() {
   </p>
   
   <form name="social_kundi" method="post" action="">
+  
+  <input type="hidden" name="form_token" value="social_kundi" />
   
   <table class="form-table">
     <tbody>
@@ -248,10 +313,6 @@ function social_kundi_admin() {
             <option value="light"<?php echo ($options['fb_color'] == 'light') ? ' selected="selected"' : '' ?>>Light</option>
             <option value="dark"<?php echo ($options['fb_color'] == 'dark') ? ' selected="selected"' : '' ?>>Dark</option>
           </select>
-
-<!--
-          <input type="text" id="fb_color" class="regular-text" name="fb_color" value="<?php echo $options['fb_color'] ?>" />
--->
         </td>
       </tr>
       
@@ -272,12 +333,29 @@ function social_kundi_admin() {
           <input type="text" id="logo_img" class="regular-text" name="logo_img" value="<?php echo $options['logo_img'] ?>" />
         </td>
       </tr>
+      
+      <tr valign="top">
+        <th scope="row">
+          <?php _e("Embed social bar", 'menu-test' ); ?>
+        </th>
+        <td>
+          <fieldset>
+            <legend class="screen-reader-text">
+              <span>Embed social bar</span>
+            </legend>
+            <label for="embed_social">
+              <input type="checkbox" id="embed_social" name="embed_social" value="1"<?php echo ($options['embed_social']) ? ' checked' : '' ?> />
+              <?php _e("Embed after content", 'menu-test'); ?>
+            </label>
+          </fieldset>
+        </td>
+      </tr>
 
     </tbody>
   </table>
 
   <p class="submit">
-    <input type="submit" name="submit" class="button-primary" value="<?php esc_attr_e('Save Changes') ?>" />
+    <input type="submit" name="update_settings" class="button-primary" value="<?php esc_attr_e('Save Changes') ?>" />
   </p>
 
   </form>
@@ -285,11 +363,6 @@ function social_kundi_admin() {
 <?php
 }
 
-function social_kundi_admin_actions() {
-	add_options_page("Social Kundi", "Social Kundi", 'manage_options', 'social_kundi', "social_kundi_admin");
-}
-
-add_action('admin_menu', 'social_kundi_admin_actions');
 
 
 ?>
