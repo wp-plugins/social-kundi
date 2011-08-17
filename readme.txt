@@ -4,7 +4,7 @@ Donate link: http://kundi.si
 Tags: social, sharing, facebook, twitter, google, google+, google plus, tweet
 Requires at least: 2.0.2
 Tested up to: 3.2.1
-Stable tag: trunk
+Stable tag: 1.0
 
 Elegant and simple social sharing solution for your blog. Supports Facebook, Twitter and Google+.
 
